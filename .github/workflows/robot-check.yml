@@ -4,28 +4,6 @@ on:
   pull_request:
 
 jobs:
-
-  robot-dry-run:
-    name: Robot Dry Run
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Get repository code
-        uses: actions/checkout@v4
-
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install -r requirements.txtname: QA-A PR Checks
-
-on:
-  pull_request:
-
-jobs:
-
   robot-dry-run:
     name: Robot Dry Run
     runs-on: ubuntu-latest
@@ -44,7 +22,6 @@ jobs:
 
       - name: Run Robot Framework dry run
         run: robot --dryrun tests/
-
 
   qa-code-quality:
     name: QA-A Code Quality
@@ -61,26 +38,3 @@ jobs:
 
       - name: Run QA-A Code Quality checks
         run: python .github/scripts/qa_code_quality.py
-
-      - name: Run Robot Framework dry run
-        run: robot --dryrun tests/
-
-
-  robocop:
-    name: QA-A Code Quality
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Get repository code
-        uses: actions/checkout@v4
-
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Run Robocop
-        run: robocop check tests/
