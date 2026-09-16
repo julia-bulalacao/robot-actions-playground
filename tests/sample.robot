@@ -2,12 +2,22 @@
 Library    SeleniumLibrary
 
 
+*** Variables ***
+${btn_submit}    xpath=//button[@id="submit"]
+${txt_email}     xpath=//input[@id="email"]
+
+
 *** Test Cases ***
-Sample Login Test
-    Log    Hello from Robot Framework
-    Sample Keyword
+TC_001 - Proceed to ePayments
+    Search for the application and click Proceed to ePayments
+
+TC_002 - Payment Validation
+    TC_001_TS_001 - Login To ZAU Evaluator
 
 
 *** Keywords ***
-Sample Keyword
-    Log    This keyword exists
+Search for the application and click Proceed to ePayments
+    Log    Searching application
+
+TC_001_TS_001 - Login To ZAU Evaluator
+    Log    Login
