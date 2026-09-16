@@ -54,41 +54,129 @@ def add_warning(file, line_number, rule_id, title, message):
 
 
 # ============================================================
+# DIFF HANDLING
+# ============================================================
+
+def parse_changed_lines(diff_file):
+    """
+    Parse a Git diff and return:
+
+    {
+        "tests/sample.robot": {12, 13, 20},
+        "resource/variables.resource": {5, 6}
+    }
+
+    Only NEW-side line numbers are recorded.
+    """
+
+    changed_lines = {}
+
+    current_file = None
+
+    diff_content = Path(diff_file).read_text(
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    for line in diff_content.splitlines():
+
+        # Example:
+        # +++ b/tests/sample.robot
+        if line.startswith("+++ b/"):
+            current_file = line[6:]
+
+            if current_file.endswith(
+                (".robot", ".resource")
+            ):
+                changed_lines.setdefault(
+                    current_file,
+                    set(),
+                )
+            else:
+                current_file = None
+
+            continue
+
+        # Example:
+        # @@ -10,0 +11,2 @@
+        #
+        # We only care about the NEW side:
+        # +11,2
+        if current_file and line.startswith("@@"):
+
+            match = re.search(
+                r"\+(\d+)(?:,(\d+))?",
+                line,
+            )
+
+            if not match:
+                continue
+
+            start_line = int(match.group(1))
+
+            line_count = (
+                int(match.group(2))
+                if match.group(2)
+                else 1
+            )
+
+            # A count of 0 means no lines exist
+            # on the new side of this hunk.
+            if line_count == 0:
+                continue
+
+            for line_number in range(
+                start_line,
+                start_line + line_count,
+            ):
+                changed_lines[current_file].add(
+                    line_number
+                )
+
+    return changed_lines
+
+
+def is_changed_line(
+    file,
+    line_number,
+    changed_lines,
+):
+    """
+    Return True when the line should be reported.
+
+    If changed_lines is None, the script is running
+    in full-scan/local mode.
+    """
+
+    if changed_lines is None:
+        return True
+
+    file_key = str(file).replace("\\", "/")
+
+    return (
+        file_key in changed_lines
+        and line_number in changed_lines[file_key]
+    )
+
+
+# ============================================================
 # HELPER FUNCTIONS
 # ============================================================
 
 def get_robot_cells(line):
-    """
-    Split a Robot Framework line using 2+ spaces or tabs.
-
-    Example:
-
-    TC_001_TS_001 - Open Module    ${argument}
-
-    becomes:
-
-    [
-        "TC_001_TS_001 - Open Module",
-        "${argument}"
-    ]
-    """
 
     stripped = line.strip()
 
     if not stripped:
         return []
 
-    return re.split(r"\s{2,}|\t+", stripped)
+    return re.split(
+        r"\s{2,}|\t+",
+        stripped,
+    )
 
 
 def get_test_case_id(test_case_name):
-    """
-    Extract TC ID from a test case name.
-
-    Example:
-    TC_001 - Proceed to ePayments
-        -> TC_001
-    """
 
     match = re.match(
         r"^(TC_\d+)\s*-\s*.+$",
@@ -103,14 +191,6 @@ def get_test_case_id(test_case_name):
 
 
 def get_test_step_id(test_step_name):
-    """
-    Extract TC and TS IDs from a test step.
-
-    Example:
-    TC_001_TS_002 - Select Mode of Payment
-        -> TC_001
-        -> TS_002
-    """
 
     match = re.match(
         r"^(TC_\d+)_TS_(\d+)\s*-\s*.+$",
@@ -131,23 +211,41 @@ def get_test_step_id(test_step_name):
 # UNIVERSAL QA-A CHECKS
 # ============================================================
 
-def check_universal_rules(file, line_number, line):
-    """
-    Rules that apply to both .robot and .resource files.
-    """
+def check_universal_rules(
+    file,
+    line_number,
+    line,
+    changed_lines,
+):
+
+    # Do not report universal-rule violations
+    # from untouched lines.
+    if not is_changed_line(
+        file,
+        line_number,
+        changed_lines,
+    ):
+        return
 
     stripped_line = line.strip()
 
-    if not stripped_line or stripped_line.startswith("#"):
+    if (
+        not stripped_line
+        or stripped_line.startswith("#")
+    ):
         return
 
     # --------------------------------------------------------
     # QA-A001 — LOCATOR NAMING VIOLATION
     # --------------------------------------------------------
 
-    variable_match = re.search(r"\$\{([^}]+)\}", line)
+    variable_match = re.search(
+        r"\$\{([^}]+)\}",
+        line,
+    )
 
     if variable_match:
+
         variable_name = variable_match.group(1)
 
         contains_locator = re.search(
@@ -157,6 +255,7 @@ def check_universal_rules(file, line_number, line):
         )
 
         if contains_locator:
+
             if not variable_name.lower().startswith(
                 ALLOWED_LOCATOR_PREFIXES
             ):
@@ -166,8 +265,8 @@ def check_universal_rules(file, line_number, line):
                     "QA-A001",
                     "Locator Naming Violation",
                     (
-                        f"'${{{variable_name}}}' does not use an "
-                        f"approved locator prefix."
+                        f"'${{{variable_name}}}' does not use "
+                        f"an approved locator prefix."
                     ),
                 )
 
@@ -175,13 +274,19 @@ def check_universal_rules(file, line_number, line):
     # QA-A002 — INVALID XPATH FORMAT
     # --------------------------------------------------------
 
-    if "=//" in line and "xpath=//" not in line.lower():
+    if (
+        "=//" in line
+        and "xpath=//" not in line.lower()
+    ):
         add_error(
             file,
             line_number,
             "QA-A002",
             "Invalid XPath Format",
-            "XPath locator must explicitly use 'xpath=//'.",
+            (
+                "XPath locator must explicitly "
+                "use 'xpath=//'."
+            ),
         )
 
     # --------------------------------------------------------
@@ -196,7 +301,10 @@ def check_universal_rules(file, line_number, line):
     )
 
     if sleep_match:
-        duration = float(sleep_match.group(1))
+
+        duration = float(
+            sleep_match.group(1)
+        )
 
         if duration > MAX_SLEEP_SECONDS:
             add_error(
@@ -217,21 +325,20 @@ def check_universal_rules(file, line_number, line):
 # TEST CASE STRUCTURE CHECKS
 # ============================================================
 
-def check_test_cases(file, lines):
-    """
-    Check QA-A test case and test step structure.
-
-    These rules apply only inside the:
-    *** Test Cases ***
-
-    section of .robot files.
-    """
+def check_test_cases(
+    file,
+    lines,
+    changed_lines,
+):
 
     current_section = None
     current_test_case = None
     current_test_case_id = None
 
-    for line_number, line in enumerate(lines, start=1):
+    for line_number, line in enumerate(
+        lines,
+        start=1,
+    ):
 
         stripped = line.strip()
 
@@ -245,55 +352,77 @@ def check_test_cases(file, lines):
         )
 
         if section_match:
-            current_section = section_match.group(1).strip().lower()
+
+            current_section = (
+                section_match
+                .group(1)
+                .strip()
+                .lower()
+            )
+
             current_test_case = None
             current_test_case_id = None
+
             continue
 
-        # Only inspect Test Cases
-        if current_section not in ("test cases", "tasks"):
+        if current_section not in (
+            "test cases",
+            "tasks",
+        ):
             continue
 
-        # Ignore empty lines and comments
-        if not stripped or stripped.startswith("#"):
+        if (
+            not stripped
+            or stripped.startswith("#")
+        ):
             continue
-
-        # ----------------------------------------------------
-        # Test case headers are not indented
-        # ----------------------------------------------------
 
         is_indented = (
             line.startswith(" ")
             or line.startswith("\t")
         )
 
+        # ----------------------------------------------------
+        # TEST CASE HEADER
+        # ----------------------------------------------------
+
         if not is_indented:
 
             current_test_case = stripped
-            current_test_case_id = get_test_case_id(
-                current_test_case
+
+            current_test_case_id = (
+                get_test_case_id(
+                    current_test_case
+                )
             )
 
-            # ------------------------------------------------
-            # QA-A006 — INVALID TEST CASE NAMING
-            # ------------------------------------------------
-
-            if current_test_case_id is None:
+            # QA-A006 only reports if the actual
+            # test case header was changed.
+            if (
+                current_test_case_id is None
+                and is_changed_line(
+                    file,
+                    line_number,
+                    changed_lines,
+                )
+            ):
                 add_warning(
                     file,
                     line_number,
                     "QA-A006",
                     "Invalid Test Case Naming",
                     (
-                        f"Test case '{current_test_case}' does not "
-                        f"follow the expected QA-A naming format. "
-                        f"Expected: TC_### - <Test Case Description>"
+                        f"Test case "
+                        f"'{current_test_case}' does not "
+                        f"follow the expected QA-A naming "
+                        f"format. Expected: "
+                        f"TC_### - "
+                        f"<Test Case Description>"
                     ),
                 )
 
             continue
 
-        # No active test case
         if current_test_case is None:
             continue
 
@@ -304,26 +433,31 @@ def check_test_cases(file, lines):
 
         first_cell = cells[0]
 
-        # ----------------------------------------------------
-        # Ignore Robot Framework settings inside a test case
-        #
-        # Example:
-        # [Documentation]
-        # [Tags]
-        # [Setup]
-        # [Teardown]
-        # [Template]
-        # [Timeout]
-        # ----------------------------------------------------
+        # Ignore Robot Framework settings
+        if (
+            first_cell.startswith("[")
+            and first_cell.endswith("]")
+        ):
+            continue
 
-        if first_cell.startswith("[") and first_cell.endswith("]"):
+        # Important:
+        # We parsed the entire file to understand
+        # the current Test Case, but only changed
+        # test-step lines are reportable.
+        if not is_changed_line(
+            file,
+            line_number,
+            changed_lines,
+        ):
             continue
 
         # ----------------------------------------------------
         # QA-A004 — INVALID TEST STEP STRUCTURE
         # ----------------------------------------------------
 
-        test_step = get_test_step_id(first_cell)
+        test_step = get_test_step_id(
+            first_cell
+        )
 
         if test_step is None:
             add_warning(
@@ -332,12 +466,14 @@ def check_test_cases(file, lines):
                 "QA-A004",
                 "Invalid Test Step Structure",
                 (
-                    f"Test step '{first_cell}' does not follow the "
-                    f"expected QA-A test step format. "
-                    f"Expected: TC_###_TS_### - "
+                    f"Test step '{first_cell}' does not "
+                    f"follow the expected QA-A test "
+                    f"step format. Expected: "
+                    f"TC_###_TS_### - "
                     f"<Test Step Description>"
                 ),
             )
+
             continue
 
         # ----------------------------------------------------
@@ -346,7 +482,8 @@ def check_test_cases(file, lines):
 
         if (
             current_test_case_id is not None
-            and test_step["tc_id"] != current_test_case_id
+            and test_step["tc_id"]
+            != current_test_case_id
         ):
             add_warning(
                 file,
@@ -354,9 +491,10 @@ def check_test_cases(file, lines):
                 "QA-A005",
                 "Test Step ID Mismatch",
                 (
-                    f"Test step '{first_cell}' belongs to "
-                    f"{test_step['tc_id']}, but it is currently "
-                    f"under {current_test_case_id}. "
+                    f"Test step '{first_cell}' belongs "
+                    f"to {test_step['tc_id']}, but it "
+                    f"is currently under "
+                    f"{current_test_case_id}. "
                     f"Expected prefix: "
                     f"{current_test_case_id}_TS_"
                 ),
@@ -367,102 +505,148 @@ def check_test_cases(file, lines):
 # FILE CHECK
 # ============================================================
 
-def check_file(file):
-    content = file.read_text(encoding="utf-8")
+def check_file(
+    file,
+    changed_lines,
+):
+
+    content = file.read_text(
+        encoding="utf-8"
+    )
+
     lines = content.splitlines()
 
-    # Universal checks
-    for line_number, line in enumerate(lines, start=1):
+    for line_number, line in enumerate(
+        lines,
+        start=1,
+    ):
         check_universal_rules(
             file,
             line_number,
             line,
+            changed_lines,
         )
 
-    # TC / TS checks only make sense for .robot files
     if file.suffix.lower() == ".robot":
-        check_test_cases(file, lines)
+        check_test_cases(
+            file,
+            lines,
+            changed_lines,
+        )
 
-def get_robot_files():
-    """
-    Determine which Robot Framework files should be checked.
-
-    GitHub Actions:
-        File paths are passed as command-line arguments,
-        so only changed PR files are checked.
-
-    Local execution:
-        If no file paths are provided, all .robot and
-        .resource files in the repository are checked.
-    """
-
-    if len(sys.argv) > 1:
-        files = []
-
-        for file_path in sys.argv[1:]:
-            path = Path(file_path)
-
-            # Only check Robot Framework files that still exist.
-            # Deleted files should be ignored.
-            if (
-                path.exists()
-                and path.is_file()
-                and path.suffix.lower() in (".robot", ".resource")
-            ):
-                files.append(path)
-
-        return files
-
-    # Local fallback: scan the entire repository.
-    files = list(Path(".").rglob("*.robot"))
-    files += list(Path(".").rglob("*.resource"))
-
-    return files
 
 # ============================================================
-# FIND ROBOT FRAMEWORK FILES
+# DETERMINE EXECUTION MODE
 # ============================================================
 
-robot_files = list(Path(".").rglob("*.robot"))
-robot_files += list(Path(".").rglob("*.resource"))
+changed_lines = None
 
 
-robot_files = get_robot_files()
+if (
+    len(sys.argv) == 3
+    and sys.argv[1] == "--diff"
+):
 
+    diff_file = sys.argv[2]
 
-print("Running QA-A Code Quality checks...")
+    changed_lines = parse_changed_lines(
+        diff_file
+    )
 
-if len(sys.argv) > 1:
-    print("Mode: Changed Robot Framework files only")
+    robot_files = []
+
+    for file_name in changed_lines:
+
+        path = Path(file_name)
+
+        if (
+            path.exists()
+            and path.is_file()
+        ):
+            robot_files.append(path)
+
+    mode = "Changed Robot Framework lines only"
+
 else:
-    print("Mode: Full repository scan")
 
-print(f"Checking {len(robot_files)} Robot Framework file(s).")
+    robot_files = list(
+        Path(".").rglob("*.robot")
+    )
 
-if robot_files:
-    print()
+    robot_files += list(
+        Path(".").rglob("*.resource")
+    )
 
-    for robot_file in robot_files:
-        print(f"  - {robot_file}")
-
-print()
+    mode = "Full repository scan"
 
 
 # ============================================================
 # RUN CHECKS
 # ============================================================
 
+print(
+    "Running QA-A Code Quality checks..."
+)
+
+print(f"Mode: {mode}")
+
+print(
+    f"Checking {len(robot_files)} "
+    f"Robot Framework file(s)."
+)
+
+print()
+
+
 for robot_file in robot_files:
-    check_file(robot_file)
+
+    print(f"  - {robot_file}")
+
+    if changed_lines is not None:
+
+        file_key = str(
+            robot_file
+        ).replace("\\", "/")
+
+        line_numbers = sorted(
+            changed_lines.get(
+                file_key,
+                set(),
+            )
+        )
+
+        if line_numbers:
+            print(
+                "    Changed lines: "
+                + ", ".join(
+                    str(number)
+                    for number in line_numbers
+                )
+            )
+
+
+print()
+
+
+for robot_file in robot_files:
+    check_file(
+        robot_file,
+        changed_lines,
+    )
 
 
 # ============================================================
 # DISPLAY ISSUES
 # ============================================================
 
-def print_issue(issue, severity):
+def print_issue(
+    issue,
+    severity,
+):
+
     full_title = (
-        f"{issue['rule_id']} - {issue['title']}"
+        f"{issue['rule_id']} - "
+        f"{issue['title']}"
     )
 
     github_command = (
@@ -471,20 +655,27 @@ def print_issue(issue, severity):
         else "warning"
     )
 
-    # GitHub annotation
     print(
         f"::{github_command} "
         f"file={issue['file']},"
         f"line={issue['line']},"
         f"title={full_title}::"
-        f"{full_title}: {issue['message']}"
+        f"{full_title}: "
+        f"{issue['message']}"
     )
 
-    # Human-readable output
-    print(f"   Rule: {full_title}")
-    print(f"   File: {issue['file']}")
-    print(f"   Line: {issue['line']}")
-    print(f"   Issue: {issue['message']}")
+    print(
+        f"   Rule: {full_title}"
+    )
+    print(
+        f"   File: {issue['file']}"
+    )
+    print(
+        f"   Line: {issue['line']}"
+    )
+    print(
+        f"   Issue: {issue['message']}"
+    )
     print()
 
 
@@ -495,50 +686,74 @@ def print_issue(issue, severity):
 if errors or warnings:
 
     print("=" * 70)
-    print("QA-A CODE QUALITY RESULTS")
+    print(
+        "QA-A CODE QUALITY RESULTS"
+    )
     print("=" * 70)
     print()
 
     if errors:
+
         print("ERRORS")
         print("-" * 70)
         print()
 
         for error in errors:
-            print_issue(error, "ERROR")
+            print_issue(
+                error,
+                "ERROR",
+            )
 
     if warnings:
+
         print("WARNINGS")
         print("-" * 70)
         print()
 
         for warning in warnings:
-            print_issue(warning, "WARNING")
+            print_issue(
+                warning,
+                "WARNING",
+            )
 
 
 print("=" * 70)
+
 print(
     f"Summary: {len(errors)} error(s), "
     f"{len(warnings)} warning(s)"
 )
+
 print("=" * 70)
 
 
-# Only ERRORS fail GitHub Actions.
 if errors:
-    print("QA-A Code Quality FAILED.")
+
+    print(
+        "QA-A Code Quality FAILED."
+    )
+
     sys.exit(1)
 
 
 if warnings:
+
     print(
-        "QA-A Code Quality PASSED with warnings. "
+        "QA-A Code Quality PASSED "
+        "with warnings. "
         "Review the recommendations above."
     )
+
     sys.exit(0)
 
 
-print("QA-A Code Quality PASSED.")
-print("No QA-A code quality violations found.")
+print(
+    "QA-A Code Quality PASSED."
+)
+
+print(
+    "No QA-A code quality violations "
+    "found in the checked lines."
+)
 
 sys.exit(0)
