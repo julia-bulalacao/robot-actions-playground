@@ -38,30 +38,31 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Get changed Robot Framework files
-        id: changed-robot-files
+      - name: Get changed Robot Framework lines
         shell: bash
         run: |
-          git diff --name-only --diff-filter=ACMR \
+          git diff \
+            --unified=0 \
+            --diff-filter=ACMR \
             "${{ github.event.pull_request.base.sha }}" \
             "${{ github.event.pull_request.head.sha }}" \
-            -- '*.robot' '*.resource' > changed_robot_files.txt
+            -- '*.robot' '*.resource' \
+            > robot_changes.diff
 
-          echo "Changed Robot Framework files:"
+          echo "Robot Framework PR changes:"
 
-          if [ -s changed_robot_files.txt ]; then
-            cat changed_robot_files.txt
+          if [ -s robot_changes.diff ]; then
+            cat robot_changes.diff
           else
-            echo "None"
+            echo "No changed .robot or .resource lines."
           fi
 
       - name: Run QA-A Code Quality checks
         shell: bash
         run: |
-          if [ -s changed_robot_files.txt ]; then
-            mapfile -t files < changed_robot_files.txt
-            python .github/scripts/qa_code_quality.py "${files[@]}"
+          if [ -s robot_changes.diff ]; then
+            python .github/scripts/qa_code_quality.py --diff robot_changes.diff
           else
-            echo "No changed .robot or .resource files."
+            echo "No changed .robot or .resource lines."
             echo "QA-A Code Quality check skipped."
           fi
