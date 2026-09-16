@@ -30,11 +30,38 @@ jobs:
     steps:
       - name: Get repository code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      - name: Get changed Robot Framework files
+        id: changed-robot-files
+        shell: bash
+        run: |
+          git diff --name-only --diff-filter=ACMR \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}" \
+            -- '*.robot' '*.resource' > changed_robot_files.txt
+
+          echo "Changed Robot Framework files:"
+
+          if [ -s changed_robot_files.txt ]; then
+            cat changed_robot_files.txt
+          else
+            echo "None"
+          fi
+
       - name: Run QA-A Code Quality checks
-        run: python .github/scripts/qa_code_quality.py
+        shell: bash
+        run: |
+          if [ -s changed_robot_files.txt ]; then
+            mapfile -t files < changed_robot_files.txt
+            python .github/scripts/qa_code_quality.py "${files[@]}"
+          else
+            echo "No changed .robot or .resource files."
+            echo "QA-A Code Quality check skipped."
+          fi
