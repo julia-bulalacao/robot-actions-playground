@@ -7,3 +7,4 @@ TC_001_TS_001 - Login To ZAU Evaluator
     Log    Login
     Sleep    10s
     Log     New valid change
+    Sleep    10s
