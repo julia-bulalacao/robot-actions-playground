@@ -5,4 +5,4 @@ Search for the application and click Proceed to ePayments
 
 TC_001_TS_001 - Login To ZAU Evaluator
     Log    Login
-    Sleep    5s
+    Sleep    10s
