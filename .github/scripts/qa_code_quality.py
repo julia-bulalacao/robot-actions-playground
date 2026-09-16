@@ -26,17 +26,14 @@ ALLOWED_LOCATOR_PREFIXES = (
 MAX_SLEEP_SECONDS = 5
 
 errors = []
+warnings = []
 
 
 # ============================================================
-# ERROR HANDLING
+# ISSUE HANDLING
 # ============================================================
 
 def add_error(file, line_number, rule_id, title, message):
-    """
-    Store a QA-A code quality violation.
-    """
-
     errors.append({
         "file": str(file),
         "line": line_number,
@@ -46,131 +43,345 @@ def add_error(file, line_number, rule_id, title, message):
     })
 
 
+def add_warning(file, line_number, rule_id, title, message):
+    warnings.append({
+        "file": str(file),
+        "line": line_number,
+        "rule_id": rule_id,
+        "title": title,
+        "message": message,
+    })
+
+
 # ============================================================
-# FILE CHECKS
+# HELPER FUNCTIONS
 # ============================================================
 
-def check_file(file):
+def get_robot_cells(line):
     """
-    Run QA-A code quality checks against a Robot Framework
-    .robot or .resource file.
+    Split a Robot Framework line using 2+ spaces or tabs.
+
+    Example:
+
+    TC_001_TS_001 - Open Module    ${argument}
+
+    becomes:
+
+    [
+        "TC_001_TS_001 - Open Module",
+        "${argument}"
+    ]
     """
 
-    content = file.read_text(encoding="utf-8")
+    stripped = line.strip()
 
-    for line_number, line in enumerate(content.splitlines(), start=1):
+    if not stripped:
+        return []
 
-        # Ignore comments
-        stripped_line = line.strip()
+    return re.split(r"\s{2,}|\t+", stripped)
 
-        if not stripped_line or stripped_line.startswith("#"):
-            continue
 
-        # ----------------------------------------------------
-        # QA-A001 — LOCATOR NAMING VIOLATION
-        #
-        # Locator variables must use an approved prefix.
-        #
-        # Good:
-        # ${btn_submit}
-        # ${txt_email}
-        # ${ddl_application_type}
-        #
-        # Bad:
-        # ${submit_button}
-        # ${email_field}
-        # ----------------------------------------------------
+def get_test_case_id(test_case_name):
+    """
+    Extract TC ID from a test case name.
 
-        variable_match = re.search(r"\$\{([^}]+)\}", line)
+    Example:
+    TC_001 - Proceed to ePayments
+        -> TC_001
+    """
 
-        if variable_match:
-            variable_name = variable_match.group(1)
+    match = re.match(
+        r"^(TC_\d+)\s*-\s*.+$",
+        test_case_name,
+        re.IGNORECASE,
+    )
 
-            # Determine whether the line appears to contain
-            # a locator value.
-            contains_locator = re.search(
-                r"(xpath=|id=|name=|css=|=//|(?<!xpath=)//)",
-                line,
-                re.IGNORECASE,
-            )
+    if match:
+        return match.group(1).upper()
 
-            if contains_locator:
-                if not variable_name.lower().startswith(
-                    ALLOWED_LOCATOR_PREFIXES
-                ):
-                    add_error(
-                        file,
-                        line_number,
-                        "QA-A001",
-                        "Locator Naming Violation",
-                        (
-                            f"'${{{variable_name}}}' does not use an "
-                            f"approved locator prefix."
-                        ),
-                    )
+    return None
 
-        # ----------------------------------------------------
-        # QA-A002 — INVALID XPATH FORMAT
-        #
-        # XPath locators must explicitly use:
-        #
-        # xpath=//
-        #
-        # Good:
-        # ${btn_submit}    xpath=//button[@id="submit"]
-        #
-        # Bad:
-        # ${btn_submit}    =//button[@id="submit"]
-        # ----------------------------------------------------
 
-        if "=//" in line and "xpath=//" not in line.lower():
-            add_error(
-                file,
-                line_number,
-                "QA-A002",
-                "Invalid XPath Format",
-                (
-                    "XPath locator must explicitly use 'xpath=//'."
-                ),
-            )
+def get_test_step_id(test_step_name):
+    """
+    Extract TC and TS IDs from a test step.
 
-        # ----------------------------------------------------
-        # QA-A003 — SLEEP DURATION VIOLATION
-        #
-        # Sleep is allowed up to 5 seconds.
-        #
-        # Good:
-        # Sleep    2s
-        # Sleep    5s
-        #
-        # Bad:
-        # Sleep    6s
-        # Sleep    10s
-        # ----------------------------------------------------
+    Example:
+    TC_001_TS_002 - Select Mode of Payment
+        -> TC_001
+        -> TS_002
+    """
 
-        sleep_match = re.search(
-            r"\bSleep\s+(\d+(?:\.\d+)?)\s*"
-            r"(s|sec|secs|second|seconds)?\b",
+    match = re.match(
+        r"^(TC_\d+)_TS_(\d+)\s*-\s*.+$",
+        test_step_name,
+        re.IGNORECASE,
+    )
+
+    if match:
+        return {
+            "tc_id": match.group(1).upper(),
+            "ts_number": match.group(2),
+        }
+
+    return None
+
+
+# ============================================================
+# UNIVERSAL QA-A CHECKS
+# ============================================================
+
+def check_universal_rules(file, line_number, line):
+    """
+    Rules that apply to both .robot and .resource files.
+    """
+
+    stripped_line = line.strip()
+
+    if not stripped_line or stripped_line.startswith("#"):
+        return
+
+    # --------------------------------------------------------
+    # QA-A001 — LOCATOR NAMING VIOLATION
+    # --------------------------------------------------------
+
+    variable_match = re.search(r"\$\{([^}]+)\}", line)
+
+    if variable_match:
+        variable_name = variable_match.group(1)
+
+        contains_locator = re.search(
+            r"(xpath=|id=|name=|css=|=//|(?<!xpath=)//)",
             line,
             re.IGNORECASE,
         )
 
-        if sleep_match:
-            duration = float(sleep_match.group(1))
-
-            if duration > MAX_SLEEP_SECONDS:
+        if contains_locator:
+            if not variable_name.lower().startswith(
+                ALLOWED_LOCATOR_PREFIXES
+            ):
                 add_error(
                     file,
                     line_number,
-                    "QA-A003",
-                    "Sleep Duration Violation",
+                    "QA-A001",
+                    "Locator Naming Violation",
                     (
-                        f"Sleep is {duration:g}s. "
-                        f"Maximum allowed duration is "
-                        f"{MAX_SLEEP_SECONDS} seconds. "
-                        f"Consider using an explicit wait."
+                        f"'${{{variable_name}}}' does not use an "
+                        f"approved locator prefix."
                     ),
                 )
+
+    # --------------------------------------------------------
+    # QA-A002 — INVALID XPATH FORMAT
+    # --------------------------------------------------------
+
+    if "=//" in line and "xpath=//" not in line.lower():
+        add_error(
+            file,
+            line_number,
+            "QA-A002",
+            "Invalid XPath Format",
+            "XPath locator must explicitly use 'xpath=//'.",
+        )
+
+    # --------------------------------------------------------
+    # QA-A003 — SLEEP DURATION VIOLATION
+    # --------------------------------------------------------
+
+    sleep_match = re.search(
+        r"\bSleep\s+(\d+(?:\.\d+)?)\s*"
+        r"(s|sec|secs|second|seconds)?\b",
+        line,
+        re.IGNORECASE,
+    )
+
+    if sleep_match:
+        duration = float(sleep_match.group(1))
+
+        if duration > MAX_SLEEP_SECONDS:
+            add_error(
+                file,
+                line_number,
+                "QA-A003",
+                "Sleep Duration Violation",
+                (
+                    f"Sleep is {duration:g}s. "
+                    f"Maximum allowed duration is "
+                    f"{MAX_SLEEP_SECONDS} seconds. "
+                    f"Consider using an explicit wait."
+                ),
+            )
+
+
+# ============================================================
+# TEST CASE STRUCTURE CHECKS
+# ============================================================
+
+def check_test_cases(file, lines):
+    """
+    Check QA-A test case and test step structure.
+
+    These rules apply only inside the:
+    *** Test Cases ***
+
+    section of .robot files.
+    """
+
+    current_section = None
+    current_test_case = None
+    current_test_case_id = None
+
+    for line_number, line in enumerate(lines, start=1):
+
+        stripped = line.strip()
+
+        # ----------------------------------------------------
+        # Detect Robot Framework section
+        # ----------------------------------------------------
+
+        section_match = re.match(
+            r"^\*{3}\s*(.+?)\s*\*{3}$",
+            stripped,
+        )
+
+        if section_match:
+            current_section = section_match.group(1).strip().lower()
+            current_test_case = None
+            current_test_case_id = None
+            continue
+
+        # Only inspect Test Cases
+        if current_section not in ("test cases", "tasks"):
+            continue
+
+        # Ignore empty lines and comments
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        # ----------------------------------------------------
+        # Test case headers are not indented
+        # ----------------------------------------------------
+
+        is_indented = (
+            line.startswith(" ")
+            or line.startswith("\t")
+        )
+
+        if not is_indented:
+
+            current_test_case = stripped
+            current_test_case_id = get_test_case_id(
+                current_test_case
+            )
+
+            # ------------------------------------------------
+            # QA-A006 — INVALID TEST CASE NAMING
+            # ------------------------------------------------
+
+            if current_test_case_id is None:
+                add_warning(
+                    file,
+                    line_number,
+                    "QA-A006",
+                    "Invalid Test Case Naming",
+                    (
+                        f"Test case '{current_test_case}' does not "
+                        f"follow the expected QA-A naming format. "
+                        f"Expected: TC_### - <Test Case Description>"
+                    ),
+                )
+
+            continue
+
+        # No active test case
+        if current_test_case is None:
+            continue
+
+        cells = get_robot_cells(line)
+
+        if not cells:
+            continue
+
+        first_cell = cells[0]
+
+        # ----------------------------------------------------
+        # Ignore Robot Framework settings inside a test case
+        #
+        # Example:
+        # [Documentation]
+        # [Tags]
+        # [Setup]
+        # [Teardown]
+        # [Template]
+        # [Timeout]
+        # ----------------------------------------------------
+
+        if first_cell.startswith("[") and first_cell.endswith("]"):
+            continue
+
+        # ----------------------------------------------------
+        # QA-A004 — INVALID TEST STEP STRUCTURE
+        # ----------------------------------------------------
+
+        test_step = get_test_step_id(first_cell)
+
+        if test_step is None:
+            add_warning(
+                file,
+                line_number,
+                "QA-A004",
+                "Invalid Test Step Structure",
+                (
+                    f"Test step '{first_cell}' does not follow the "
+                    f"expected QA-A test step format. "
+                    f"Expected: TC_###_TS_### - "
+                    f"<Test Step Description>"
+                ),
+            )
+            continue
+
+        # ----------------------------------------------------
+        # QA-A005 — TEST STEP ID MISMATCH
+        # ----------------------------------------------------
+
+        if (
+            current_test_case_id is not None
+            and test_step["tc_id"] != current_test_case_id
+        ):
+            add_warning(
+                file,
+                line_number,
+                "QA-A005",
+                "Test Step ID Mismatch",
+                (
+                    f"Test step '{first_cell}' belongs to "
+                    f"{test_step['tc_id']}, but it is currently "
+                    f"under {current_test_case_id}. "
+                    f"Expected prefix: "
+                    f"{current_test_case_id}_TS_"
+                ),
+            )
+
+
+# ============================================================
+# FILE CHECK
+# ============================================================
+
+def check_file(file):
+    content = file.read_text(encoding="utf-8")
+    lines = content.splitlines()
+
+    # Universal checks
+    for line_number, line in enumerate(lines, start=1):
+        check_universal_rules(
+            file,
+            line_number,
+            line,
+        )
+
+    # TC / TS checks only make sense for .robot files
+    if file.suffix.lower() == ".robot":
+        check_test_cases(file, lines)
 
 
 # ============================================================
@@ -195,62 +406,88 @@ for robot_file in robot_files:
 
 
 # ============================================================
+# DISPLAY ISSUES
+# ============================================================
+
+def print_issue(issue, severity):
+    full_title = (
+        f"{issue['rule_id']} - {issue['title']}"
+    )
+
+    github_command = (
+        "error"
+        if severity == "ERROR"
+        else "warning"
+    )
+
+    # GitHub annotation
+    print(
+        f"::{github_command} "
+        f"file={issue['file']},"
+        f"line={issue['line']},"
+        f"title={full_title}::"
+        f"{full_title}: {issue['message']}"
+    )
+
+    # Human-readable output
+    print(f"   Rule: {full_title}")
+    print(f"   File: {issue['file']}")
+    print(f"   Line: {issue['line']}")
+    print(f"   Issue: {issue['message']}")
+    print()
+
+
+# ============================================================
 # RESULTS
 # ============================================================
 
-if errors:
+if errors or warnings:
 
     print("=" * 70)
-    print("QA-A CODE QUALITY ISSUES")
+    print("QA-A CODE QUALITY RESULTS")
     print("=" * 70)
     print()
 
-    for error in errors:
-
-        full_title = (
-            f"{error['rule_id']} - {error['title']}"
-        )
-
-        # GitHub Actions annotation.
-        #
-        # This allows GitHub to associate the error with
-        # the exact file and line where the violation occurred.
-        print(
-            f"::error "
-            f"file={error['file']},"
-            f"line={error['line']},"
-            f"title={full_title}::"
-            f"{full_title}: {error['message']}"
-        )
-
-        # Human-readable console output.
-        print(f"   Rule: {full_title}")
-        print(f"   File: {error['file']}")
-        print(f"   Line: {error['line']}")
-        print(f"   Issue: {error['message']}")
+    if errors:
+        print("ERRORS")
+        print("-" * 70)
         print()
 
-    print("=" * 70)
+        for error in errors:
+            print_issue(error, "ERROR")
 
-    issue_word = "issue" if len(errors) == 1 else "issues"
+    if warnings:
+        print("WARNINGS")
+        print("-" * 70)
+        print()
 
-    print(
-        f"QA-A Code Quality FAILED - "
-        f"{len(errors)} {issue_word} found."
-    )
+        for warning in warnings:
+            print_issue(warning, "WARNING")
 
-    print("=" * 70)
 
+print("=" * 70)
+print(
+    f"Summary: {len(errors)} error(s), "
+    f"{len(warnings)} warning(s)"
+)
+print("=" * 70)
+
+
+# Only ERRORS fail GitHub Actions.
+if errors:
+    print("QA-A Code Quality FAILED.")
     sys.exit(1)
 
 
-# ============================================================
-# SUCCESS
-# ============================================================
+if warnings:
+    print(
+        "QA-A Code Quality PASSED with warnings. "
+        "Review the recommendations above."
+    )
+    sys.exit(0)
 
-print("=" * 70)
-print("QA-A Code Quality PASSED")
+
+print("QA-A Code Quality PASSED.")
 print("No QA-A code quality violations found.")
-print("=" * 70)
 
 sys.exit(0)

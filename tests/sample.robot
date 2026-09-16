@@ -8,12 +8,20 @@ ${txt_email}        xpath=//input[@id="email"]
 
 
 *** Test Cases ***
-Sample Login Test
-    Log    Hello from Robot Framework
-    Sample Keyword
+TC_001 - Proceed to ePayments
+    TC_001_TS_001 - Go to ZAU Module and click View Application List
+    Search for the application and click Proceed to ePayments
+    TC_002_TS_003 - Select Mode of Payment
+
+Payment Validation
+    TC_002_TS_001 - Login To ZAU Evaluator And Go To Zoning Module
 
 
 *** Keywords ***
-Sample Keyword
-    Sleep    10s
-    Log    This keyword exists
+TC_001_TS_001 - Go to ZAU Module and click View Application List
+    Wait Until Element Is Visible    ${submit_button}    5s
+    Click Element                    ${submit_button}
+    Sleep                            10s
+
+TC_002_TS_001 - Login To ZAU Evaluator And Go To Zoning Module
+    Log    Login
