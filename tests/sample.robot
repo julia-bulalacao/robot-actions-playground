@@ -1,4 +1,13 @@
+*** Settings ***
+Library    SeleniumLibrary
+
+
 *** Test Cases ***
 Sample Login Test
     Log    Hello from Robot Framework
-    This Keyword Does Not Existssss
+    Sample Keyword
+
+
+*** Keywords ***
+Sample Keyword
+    Log    This keyword exists
