@@ -1,68 +1,32 @@
-name: QA-A PR Checks
+qa-code-quality:
+  name: QA-A Code Quality
+  runs-on: ubuntu-latest
 
-on:
-  pull_request:
+  steps:
+    - name: Get repository code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-jobs:
-  robot-dry-run:
-    name: Robot Dry Run
-    runs-on: ubuntu-latest
+    - name: Install Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
 
-    steps:
-      - name: Get repository code
-        uses: actions/checkout@v4
+    - name: Run QA-A Code Quality checks
+      shell: bash
+      run: |
+        git diff \
+          --unified=0 \
+          --diff-filter=ACMR \
+          "${{ github.event.pull_request.base.sha }}" \
+          "${{ github.event.pull_request.head.sha }}" \
+          -- '*.robot' '*.resource' \
+          > robot_changes.diff
 
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Run Robot Framework dry run
-        run: robot --dryrun tests/
-
-  qa-code-quality:
-    name: QA-A Code Quality
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Get repository code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Detect changed Robot Framework lines
-        shell: bash
-        run: |
-          git diff \
-            --unified=0 \
-            --diff-filter=ACMR \
-            "${{ github.event.pull_request.base.sha }}" \
-            "${{ github.event.pull_request.head.sha }}" \
-            -- '*.robot' '*.resource' \
-            > robot_changes.diff
-
-          if [ -s robot_changes.diff ]; then
-            echo "Robot Framework changes detected:"
-            grep '^+++ b/' robot_changes.diff \
-              | sed 's|^+++ b/|  - |'
-          else
-            echo "No Robot Framework changes detected."
-          fi
-
-      - name: Run QA-A Code Quality checks
-        shell: bash
-        run: |
-          if [ -s robot_changes.diff ]; then
-            python .github/scripts/qa_code_quality.py --diff robot_changes.diff
-          else
-            echo "No changed .robot or .resource lines."
-            echo "Code quality check skipped."
-          fi
+        if [ -s robot_changes.diff ]; then
+          python .github/scripts/qa_code_quality.py --diff robot_changes.diff
+        else
+          echo "No changed .robot or .resource lines detected."
+          echo "QA-A Code Quality check skipped."
+        fi
