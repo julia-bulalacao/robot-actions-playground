@@ -1,9 +1,10 @@
-name: Robot Framework PR Check
+name: QA-A PR Checks
 
 on:
   pull_request:
 
 jobs:
+
   robot-dry-run:
     name: Robot Dry Run
     runs-on: ubuntu-latest
@@ -17,11 +18,28 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Robot Framework
+      - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Check Robot scripts
+      - name: Run Robot Framework dry run
         run: robot --dryrun tests/
 
-      - name: Check Robot code quality
+
+  robocop:
+    name: QA-A Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get repository code
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Robocop
         run: robocop check tests/
