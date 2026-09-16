@@ -22,3 +22,6 @@ jobs:
 
       - name: Check Robot scripts
         run: robot --dryrun tests/
+
+      - name: Check Robot code quality
+        run: robocop check tests/
