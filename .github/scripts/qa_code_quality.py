@@ -383,6 +383,41 @@ def check_file(file):
     if file.suffix.lower() == ".robot":
         check_test_cases(file, lines)
 
+def get_robot_files():
+    """
+    Determine which Robot Framework files should be checked.
+
+    GitHub Actions:
+        File paths are passed as command-line arguments,
+        so only changed PR files are checked.
+
+    Local execution:
+        If no file paths are provided, all .robot and
+        .resource files in the repository are checked.
+    """
+
+    if len(sys.argv) > 1:
+        files = []
+
+        for file_path in sys.argv[1:]:
+            path = Path(file_path)
+
+            # Only check Robot Framework files that still exist.
+            # Deleted files should be ignored.
+            if (
+                path.exists()
+                and path.is_file()
+                and path.suffix.lower() in (".robot", ".resource")
+            ):
+                files.append(path)
+
+        return files
+
+    # Local fallback: scan the entire repository.
+    files = list(Path(".").rglob("*.robot"))
+    files += list(Path(".").rglob("*.resource"))
+
+    return files
 
 # ============================================================
 # FIND ROBOT FRAMEWORK FILES
@@ -392,8 +427,24 @@ robot_files = list(Path(".").rglob("*.robot"))
 robot_files += list(Path(".").rglob("*.resource"))
 
 
+robot_files = get_robot_files()
+
+
 print("Running QA-A Code Quality checks...")
-print(f"Found {len(robot_files)} Robot Framework file(s).")
+
+if len(sys.argv) > 1:
+    print("Mode: Changed Robot Framework files only")
+else:
+    print("Mode: Full repository scan")
+
+print(f"Checking {len(robot_files)} Robot Framework file(s).")
+
+if robot_files:
+    print()
+
+    for robot_file in robot_files:
+        print(f"  - {robot_file}")
+
 print()
 
 
