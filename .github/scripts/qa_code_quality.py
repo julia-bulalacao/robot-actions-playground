@@ -19,8 +19,32 @@ ALLOWED_LOCATOR_PREFIXES = (
     "icn_",
     "img_",
     "tbl_",
+    "row_",
+    "col_",
     "div_",
+    "con_",
     "modal_",
+    "swal_",
+    "tab_",
+    "frm_",
+    "ifrm_",
+    "upl_",
+    "lst_",
+    "opt_",
+    "card_",
+    "nav_",
+    "msg_",
+    "badge_",
+    "ldr_",
+)
+
+LOCATOR_VARIABLE_PATTERN = re.compile(
+    r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"
+)
+
+EXPLICIT_LOCATOR_PATTERN = re.compile(
+    r"(xpath=|id=|name=|css=|=//|(?<!xpath=)//)",
+    re.IGNORECASE,
 )
 
 MAX_SLEEP_SECONDS = 5
@@ -223,6 +247,7 @@ def parse_changed_lines(diff_file):
     process_hunk()
     return changed_lines
 
+
 def is_changed_line(
     file,
     line_number,
@@ -294,6 +319,35 @@ def get_test_step_id(test_step_name):
     return None
 
 
+def is_locator_variable(variable_name, line):
+    """
+    Determine whether a Robot Framework variable represents a locator.
+
+    Explicit locator strategies such as xpath=, id=, name=, css=,
+    and XPath expressions are always treated as locators.
+
+    Bare/direct locator values are treated as locators when the
+    variable already uses an approved locator prefix. This allows
+    direct IDs such as:
+
+        ${btn_submit}    btn_submit
+
+    without incorrectly treating normal variables such as:
+
+        ${browser}       chrome
+        ${email}         test@example.com
+
+    as locator variables.
+    """
+
+    if EXPLICIT_LOCATOR_PATTERN.search(line):
+        return True
+
+    return variable_name.lower().startswith(
+        ALLOWED_LOCATOR_PREFIXES
+    )
+
+
 # ============================================================
 # UNIVERSAL QA-A CHECKS
 # ============================================================
@@ -335,25 +389,44 @@ def check_universal_rules(
 
         variable_name = variable_match.group(1)
 
-        contains_locator = re.search(
-            r"(xpath=|id=|name=|css=|=//|(?<!xpath=)//)",
+        if is_locator_variable(
+            variable_name,
             line,
-            re.IGNORECASE,
-        )
+        ):
 
-        if contains_locator:
-
-            if not variable_name.lower().startswith(
+            has_valid_prefix = variable_name.startswith(
                 ALLOWED_LOCATOR_PREFIXES
-            ):
+            )
+
+            is_snake_case = bool(
+                LOCATOR_VARIABLE_PATTERN.fullmatch(
+                    variable_name
+                )
+            )
+
+            if not has_valid_prefix or not is_snake_case:
+
+                issues = []
+
+                if not has_valid_prefix:
+                    issues.append(
+                        "does not use an approved locator prefix"
+                    )
+
+                if not is_snake_case:
+                    issues.append(
+                        "does not follow snake_case naming"
+                    )
+
                 add_error(
                     file,
                     line_number,
                     "QA-A001",
                     "Locator Naming Violation",
                     (
-                        f"'${{{variable_name}}}' does not use "
-                        f"an approved locator prefix."
+                        f"'${{{variable_name}}}' "
+                        + " and ".join(issues)
+                        + "."
                     ),
                 )
 
@@ -754,15 +827,19 @@ def print_issue(
     print(
         f"   Rule: {full_title}"
     )
+
     print(
         f"   File: {issue['file']}"
     )
+
     print(
         f"   Line: {issue['line']}"
     )
+
     print(
         f"   Issue: {issue['message']}"
     )
+
     print()
 
 

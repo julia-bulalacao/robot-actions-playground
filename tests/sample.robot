@@ -1,5 +1,7 @@
 *** Variables ***
 ${btn_legacy}    xpath=//button[@id="legacy"]
+${NotSnakeCase}    xpath=button
+${snake_case}    random_button
 
 *** Keywords ***
 Search for the application and click Proceed to ePayments
