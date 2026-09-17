@@ -827,31 +827,32 @@ for warning in warnings:
 
 def print_issue(issue, severity):
 
-    full_title = (
-        f"{issue['rule_id']} - "
-        f"{issue['title']}"
-    )
-
     github_command = (
         "error"
         if severity == "ERROR"
         else "warning"
     )
 
-    # GitHub annotation.
-    # This creates the highlighted Error/Warning row.
+    title = (
+        f"[{issue['rule_id']}] "
+        f"{issue['title']}"
+    )
+
+    # Highlight the rule/title in GitHub Actions.
+    # The detailed message is intentionally not included here
+    # to avoid duplicating the Issue line below.
     print(
         f"::{github_command} "
         f"file={issue['file']},"
         f"line={issue['line']},"
-        f"title={full_title}::"
-        f"{issue['message']}"
+        f"title={title}::"
+        f"{title}"
     )
 
-    # Additional details only.
-    # Do not repeat the issue message here.
-    print(f"   File : {issue['file']}")
-    print(f"   Line : {issue['line']}")
+    # Human-readable details.
+    print(f"File    : {issue['file']}")
+    print(f"Line    : {issue['line']}")
+    print(f"Issue   : {issue['message']}")
     print()
 
 
@@ -910,7 +911,6 @@ else:
     result = "PASSED"
 
 print(f"Result   : {result}")
-
 print("=" * 70)
 
 
