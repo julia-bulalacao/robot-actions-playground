@@ -327,17 +327,7 @@ def is_locator_variable(variable_name, line):
     and XPath expressions are always treated as locators.
 
     Bare/direct locator values are treated as locators when the
-    variable already uses an approved locator prefix. This allows
-    direct IDs such as:
-
-        ${btn_submit}    btn_submit
-
-    without incorrectly treating normal variables such as:
-
-        ${browser}       chrome
-        ${email}         test@example.com
-
-    as locator variables.
+    variable already uses an approved locator prefix.
     """
 
     if EXPLICIT_LOCATOR_PATTERN.search(line):
@@ -600,10 +590,8 @@ def check_test_cases(
         ):
             continue
 
-        # Important:
-        # We parsed the entire file to understand
-        # the current Test Case, but only changed
-        # test-step lines are reportable.
+        # Parse the entire file to understand the current
+        # Test Case, but report only changed test-step lines.
         if not is_changed_line(
             file,
             line_number,
@@ -701,7 +689,6 @@ def check_file(
 
 changed_lines = None
 
-
 if (
     len(sys.argv) == 3
     and sys.argv[1] == "--diff"
@@ -757,7 +744,6 @@ print(
 
 print()
 
-
 for robot_file in robot_files:
 
     print(f"  - {robot_file}")
@@ -784,9 +770,7 @@ for robot_file in robot_files:
                 )
             )
 
-
 print()
-
 
 for robot_file in robot_files:
     check_file(
@@ -796,18 +780,13 @@ for robot_file in robot_files:
 
 
 # ============================================================
-# DISPLAY ISSUES
+# GITHUB ANNOTATIONS
 # ============================================================
 
-def print_issue(
+def create_github_annotation(
     issue,
     severity,
 ):
-
-    full_title = (
-        f"{issue['rule_id']} - "
-        f"{issue['title']}"
-    )
 
     github_command = (
         "error"
@@ -815,31 +794,47 @@ def print_issue(
         else "warning"
     )
 
+    annotation_title = (
+        f"{issue['rule_id']} - "
+        f"{issue['title']}"
+    )
+
     print(
         f"::{github_command} "
         f"file={issue['file']},"
         f"line={issue['line']},"
-        f"title={full_title}::"
-        f"{full_title}: "
+        f"title={annotation_title}::"
         f"{issue['message']}"
     )
 
-    print(
-        f"   Rule: {full_title}"
+
+for error in errors:
+    create_github_annotation(
+        error,
+        "ERROR",
     )
 
-    print(
-        f"   File: {issue['file']}"
+for warning in warnings:
+    create_github_annotation(
+        warning,
+        "WARNING",
     )
 
-    print(
-        f"   Line: {issue['line']}"
-    )
+
+# ============================================================
+# DISPLAY ISSUES
+# ============================================================
+
+def print_issue(issue):
 
     print(
-        f"   Issue: {issue['message']}"
+        f"[{issue['rule_id']}] "
+        f"{issue['title']}"
     )
 
+    print(f"File    : {issue['file']}")
+    print(f"Line    : {issue['line']}")
+    print(f"Issue   : {issue['message']}")
     print()
 
 
@@ -849,10 +844,9 @@ def print_issue(
 
 if errors or warnings:
 
+    print()
     print("=" * 70)
-    print(
-        "QA-A CODE QUALITY RESULTS"
-    )
+    print("QA-A CODE QUALITY RESULTS")
     print("=" * 70)
     print()
 
@@ -863,10 +857,7 @@ if errors or warnings:
         print()
 
         for error in errors:
-            print_issue(
-                error,
-                "ERROR",
-            )
+            print_issue(error)
 
     if warnings:
 
@@ -875,49 +866,37 @@ if errors or warnings:
         print()
 
         for warning in warnings:
-            print_issue(
-                warning,
-                "WARNING",
-            )
+            print_issue(warning)
 
 
-print("=" * 70)
-
-print(
-    f"Summary: {len(errors)} error(s), "
-    f"{len(warnings)} warning(s)"
-)
+# ============================================================
+# SUMMARY
+# ============================================================
 
 print("=" * 70)
+print("SUMMARY")
+print("=" * 70)
 
+print(f"Errors   : {len(errors)}")
+print(f"Warnings : {len(warnings)}")
 
 if errors:
+    result = "FAILED"
+elif warnings:
+    result = "PASSED WITH WARNINGS"
+else:
+    result = "PASSED"
 
-    print(
-        "QA-A Code Quality FAILED."
-    )
+print(f"Result   : {result}")
 
+print("=" * 70)
+
+
+# ============================================================
+# EXIT STATUS
+# ============================================================
+
+if errors:
     sys.exit(1)
-
-
-if warnings:
-
-    print(
-        "QA-A Code Quality PASSED "
-        "with warnings. "
-        "Review the recommendations above."
-    )
-
-    sys.exit(0)
-
-
-print(
-    "QA-A Code Quality PASSED."
-)
-
-print(
-    "No QA-A code quality violations "
-    "found in the checked lines."
-)
 
 sys.exit(0)
