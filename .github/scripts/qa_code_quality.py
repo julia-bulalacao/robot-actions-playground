@@ -825,17 +825,103 @@ for warning in warnings:
 # DISPLAY ISSUES
 # ============================================================
 
-def print_issue(issue):
+def print_issue(issue, severity):
 
-    print(
-        f"[{issue['rule_id']}] "
+    full_title = (
+        f"{issue['rule_id']} - "
         f"{issue['title']}"
     )
 
-    print(f"File    : {issue['file']}")
-    print(f"Line    : {issue['line']}")
-    print(f"Issue   : {issue['message']}")
+    github_command = (
+        "error"
+        if severity == "ERROR"
+        else "warning"
+    )
+
+    # GitHub annotation.
+    # This creates the highlighted Error/Warning row.
+    print(
+        f"::{github_command} "
+        f"file={issue['file']},"
+        f"line={issue['line']},"
+        f"title={full_title}::"
+        f"{issue['message']}"
+    )
+
+    # Additional details only.
+    # Do not repeat the issue message here.
+    print(f"   File : {issue['file']}")
+    print(f"   Line : {issue['line']}")
     print()
+
+
+# ============================================================
+# RESULTS
+# ============================================================
+
+if errors or warnings:
+
+    print("=" * 70)
+    print("QA-A CODE QUALITY RESULTS")
+    print("=" * 70)
+    print()
+
+    if errors:
+
+        print("ERRORS")
+        print("-" * 70)
+        print()
+
+        for error in errors:
+            print_issue(
+                error,
+                "ERROR",
+            )
+
+    if warnings:
+
+        print("WARNINGS")
+        print("-" * 70)
+        print()
+
+        for warning in warnings:
+            print_issue(
+                warning,
+                "WARNING",
+            )
+
+
+# ============================================================
+# SUMMARY
+# ============================================================
+
+print("=" * 70)
+print("SUMMARY")
+print("=" * 70)
+
+print(f"Errors   : {len(errors)}")
+print(f"Warnings : {len(warnings)}")
+
+if errors:
+    result = "FAILED"
+elif warnings:
+    result = "PASSED WITH WARNINGS"
+else:
+    result = "PASSED"
+
+print(f"Result   : {result}")
+
+print("=" * 70)
+
+
+# ============================================================
+# EXIT STATUS
+# ============================================================
+
+if errors:
+    sys.exit(1)
+
+sys.exit(0)
 
 
 # ============================================================
