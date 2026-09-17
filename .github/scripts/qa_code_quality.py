@@ -54,6 +54,16 @@ warnings = []
 
 
 # ============================================================
+# CONSOLE COLORS
+# ============================================================
+
+RED = "\033[91m"
+YELLOW = "\033[93m"
+GREEN = "\033[92m"
+RESET = "\033[0m"
+
+
+# ============================================================
 # ISSUE HANDLING
 # ============================================================
 
@@ -583,7 +593,7 @@ def check_test_cases(
 
         first_cell = cells[0]
 
-        # Ignore Robot Framework settings
+        # Ignore Robot Framework settings.
         if (
             first_cell.startswith("[")
             and first_cell.endswith("]")
@@ -731,10 +741,7 @@ else:
 # RUN CHECKS
 # ============================================================
 
-print(
-    "Running QA-A Code Quality checks..."
-)
-
+print("Running QA-A Code Quality checks...")
 print(f"Mode: {mode}")
 
 print(
@@ -780,76 +787,22 @@ for robot_file in robot_files:
 
 
 # ============================================================
-# GITHUB ANNOTATIONS
-# ============================================================
-
-def create_github_annotation(
-    issue,
-    severity,
-):
-
-    github_command = (
-        "error"
-        if severity == "ERROR"
-        else "warning"
-    )
-
-    annotation_title = (
-        f"{issue['rule_id']} - "
-        f"{issue['title']}"
-    )
-
-    print(
-        f"::{github_command} "
-        f"file={issue['file']},"
-        f"line={issue['line']},"
-        f"title={annotation_title}::"
-        f"{issue['message']}"
-    )
-
-
-for error in errors:
-    create_github_annotation(
-        error,
-        "ERROR",
-    )
-
-for warning in warnings:
-    create_github_annotation(
-        warning,
-        "WARNING",
-    )
-
-
-# ============================================================
 # DISPLAY ISSUES
 # ============================================================
 
 def print_issue(issue, severity):
-
-    github_command = (
-        "error"
-        if severity == "ERROR"
-        else "warning"
-    )
 
     title = (
         f"[{issue['rule_id']}] "
         f"{issue['title']}"
     )
 
-    # Highlight the rule/title in GitHub Actions.
-    # The detailed message is intentionally not included here
-    # to avoid duplicating the Issue line below.
-    print(
-        f"::{github_command} "
-        f"file={issue['file']},"
-        f"line={issue['line']},"
-        f"title={title}::"
-        f"{title}"
-    )
+    if severity == "ERROR":
+        color = RED
+    else:
+        color = YELLOW
 
-    # Human-readable details.
+    print(f"{color}{title}{RESET}")
     print(f"File    : {issue['file']}")
     print(f"Line    : {issue['line']}")
     print(f"Issue   : {issue['message']}")
@@ -905,75 +858,20 @@ print(f"Warnings : {len(warnings)}")
 
 if errors:
     result = "FAILED"
+    result_color = RED
+
 elif warnings:
     result = "PASSED WITH WARNINGS"
+    result_color = YELLOW
+
 else:
     result = "PASSED"
+    result_color = GREEN
 
-print(f"Result   : {result}")
-print("=" * 70)
-
-
-# ============================================================
-# EXIT STATUS
-# ============================================================
-
-if errors:
-    sys.exit(1)
-
-sys.exit(0)
-
-
-# ============================================================
-# RESULTS
-# ============================================================
-
-if errors or warnings:
-
-    print()
-    print("=" * 70)
-    print("QA-A CODE QUALITY RESULTS")
-    print("=" * 70)
-    print()
-
-    if errors:
-
-        print("ERRORS")
-        print("-" * 70)
-        print()
-
-        for error in errors:
-            print_issue(error)
-
-    if warnings:
-
-        print("WARNINGS")
-        print("-" * 70)
-        print()
-
-        for warning in warnings:
-            print_issue(warning)
-
-
-# ============================================================
-# SUMMARY
-# ============================================================
-
-print("=" * 70)
-print("SUMMARY")
-print("=" * 70)
-
-print(f"Errors   : {len(errors)}")
-print(f"Warnings : {len(warnings)}")
-
-if errors:
-    result = "FAILED"
-elif warnings:
-    result = "PASSED WITH WARNINGS"
-else:
-    result = "PASSED"
-
-print(f"Result   : {result}")
+print(
+    f"Result   : "
+    f"{result_color}{result}{RESET}"
+)
 
 print("=" * 70)
 
