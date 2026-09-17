@@ -38,7 +38,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Get changed Robot Framework lines
+      - name: Run QA-A Code Quality checks
         shell: bash
         run: |
           git diff \
@@ -49,29 +49,9 @@ jobs:
             -- '*.robot' '*.resource' \
             > robot_changes.diff
 
-          echo "============================================================"
-          echo "Changed Robot Framework Lines"
-          echo "============================================================"
-          echo ""
-
-          if [ -s robot_changes.diff ]; then
-            grep '^+++ b/' robot_changes.diff | sed 's|^+++ b/|File: |'
-            echo ""
-            echo "Robot Framework changes detected."
-            echo "Detailed changed lines will be evaluated by QA-A Code Quality."
-          else
-            echo "No changed .robot or .resource lines detected."
-          fi
-
-          echo ""
-          echo "============================================================"
-
-      - name: Run QA-A Code Quality checks
-        shell: bash
-        run: |
           if [ -s robot_changes.diff ]; then
             python .github/scripts/qa_code_quality.py --diff robot_changes.diff
           else
-            echo "No changed .robot or .resource lines."
+            echo "No changed .robot or .resource lines detected."
             echo "QA-A Code Quality check skipped."
           fi
